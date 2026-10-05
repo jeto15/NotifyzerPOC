@@ -2,6 +2,7 @@ package com.example.notifyzerpocphase1.data
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
@@ -13,7 +14,10 @@ interface NotificationDao {
     @Query("SELECT DISTINCT title FROM notifications WHERE title IS NOT NULL AND title != ''")
     fun getUniqueSenders(): Flow<List<String>>
 
-    @Insert
+    @Query("SELECT COUNT(*) FROM notifications WHERE packageName = :packageName AND (text = :text OR (text IS NULL AND :text IS NULL)) AND timestamp = :timestamp")
+    fun countDuplicate(packageName: String, text: String?, timestamp: Long): Int
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insertNotification(notification: NotificationEntity)
 
     @Query("DELETE FROM notifications")

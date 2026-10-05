@@ -16,7 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.tooling.preview.Preview
+import com.example.notifyzerpocphase1.ui.theme.NotifyzerPOCPhase1Theme
 import com.example.notifyzerpocphase1.model.HistoricalSms
+import com.example.notifyzerpocphase1.util.ContactUtils
 import com.example.notifyzerpocphase1.viewmodel.HistoricalSmsViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -67,7 +70,10 @@ fun HistoricalSmsScreen(viewModel: HistoricalSmsViewModel) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(groupedSms.keys.toList()) { contact ->
-                ContactItem(contact = contact, messages = groupedSms[contact] ?: emptyList())
+                val displayName = remember(contact) {
+                    ContactUtils.getContactName(context, contact)
+                }
+                ContactItem(contact = displayName, messages = groupedSms[contact] ?: emptyList())
             }
         }
     }
@@ -125,5 +131,21 @@ fun SmsMessageItem(msg: HistoricalSms) {
             Text(text = dateStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
         }
         Text(text = msg.body, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun HistoricalSmsPreview() {
+    val sampleMessages = listOf(
+        HistoricalSms(address = "+1234567890", body = "Hello, your verification code is 482910.", date = System.currentTimeMillis() - 3600000L, type = 1),
+        HistoricalSms(address = "+1234567890", body = "Thank you!", date = System.currentTimeMillis() - 1800000L, type = 2)
+    )
+    NotifyzerPOCPhase1Theme {
+        Surface {
+            Column(modifier = Modifier.padding(16.dp)) {
+                ContactItem(contact = "+1234567890", messages = sampleMessages)
+            }
+        }
     }
 }

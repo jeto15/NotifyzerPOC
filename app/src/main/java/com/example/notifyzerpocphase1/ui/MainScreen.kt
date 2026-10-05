@@ -1,6 +1,11 @@
 package com.example.notifyzerpocphase1.ui
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -9,6 +14,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,10 +28,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Phone
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -43,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -56,58 +66,75 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.example.notifyzerpocphase1.model.CapturedNotification
 import com.example.notifyzerpocphase1.ui.theme.NotifyzerPOCPhase1Theme
+import com.example.notifyzerpocphase1.util.ContactUtils
 import com.example.notifyzerpocphase1.util.PermissionUtils
 import com.example.notifyzerpocphase1.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.setValue
-import com.example.notifyzerpocphase1.viewmodel.HistoricalSmsViewModel
-import com.example.notifyzerpocphase1.viewmodel.SyncSmsViewModel
-
 @Composable
 fun MainScreen(
     viewModel: MainViewModel,
-    historicalSmsViewModel: HistoricalSmsViewModel,
-    syncSmsViewModel: SyncSmsViewModel,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val notifications by viewModel.notifications.collectAsState()
     val isPermissionGranted by viewModel.isPermissionGranted.collectAsState()
-    
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Live Logs", "Historical SMS", "Sync History")
 
-    Column(modifier = modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = selectedTabIndex) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTabIndex == index,
-                    onClick = { selectedTabIndex = index },
-                    text = { Text(title) }
-                )
-            }
-        }
-        
-        if (selectedTabIndex == 0) {
-            MainScreenContent(
-                notifications = notifications,
-                isPermissionGranted = isPermissionGranted,
-                onClearLogs = { viewModel.clearLogs() },
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else if (selectedTabIndex == 1) {
-            HistoricalSmsScreen(viewModel = historicalSmsViewModel)
-        } else {
-            SyncSmsScreen(viewModel = syncSmsViewModel)
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val smsGranted = permissions[Manifest.permission.READ_SMS] ?: false
+        if (smsGranted) {
+            viewModel.autoSyncTargetNumber(context)
         }
     }
+
+    LaunchedEffect(Unit) {
+        val smsGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.READ_SMS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val contactsGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.READ_CONTACTS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (smsGranted) {
+            viewModel.autoSyncTargetNumber(context)
+        } else {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.READ_SMS,
+                    Manifest.permission.READ_CONTACTS
+                )
+            )
+        }
+    }
+
+    val filteredNotifications = remember(notifications) {
+        viewModel.getFilteredNotifications(context, notifications)
+    }
+
+    MainScreenContent(
+        notifications = filteredNotifications,
+        isPermissionGranted = isPermissionGranted,
+        onClearLogs = { viewModel.clearLogs() },
+        onGrantPermissions = {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.READ_SMS,
+                    Manifest.permission.READ_CONTACTS
+                )
+            )
+        },
+        modifier = modifier.fillMaxSize()
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -116,6 +143,7 @@ fun MainScreenContent(
     notifications: List<CapturedNotification>,
     isPermissionGranted: Boolean,
     onClearLogs: () -> Unit,
+    onGrantPermissions: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -144,23 +172,22 @@ fun MainScreenContent(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Notifyzer POC",
+                                text = "Notifyzer Live Logs",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = if (isPermissionGranted) "Listener Active" else "Setup Required",
+                                text = "Targets: ${MainViewModel.TARGET_POC_NUMBERS.joinToString(", ")}",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (isPermissionGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
                 },
                 actions = {
                     if (notifications.isNotEmpty()) {
-                        IconButton(
-                            onClick = onClearLogs
-                        ) {
+                        IconButton(onClick = onClearLogs) {
                             Icon(
                                 imageVector = Icons.Rounded.Delete,
                                 contentDescription = "Clear Logs",
@@ -214,20 +241,21 @@ fun MainScreenContent(
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = "Notification Access Required",
+                                text = "Notification & SMS Permissions Required",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "Notifyzer needs notification access permission to capture and display incoming notifications in real-time for debugging and logging.",
+                            text = "Notifyzer needs notification access and SMS read permission to automatically fetch historical SMS and capture live messages.",
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = {
                                 PermissionUtils.openNotificationListenerSettings(context)
+                                onGrantPermissions()
                             },
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
@@ -248,7 +276,7 @@ fun MainScreenContent(
                 }
             }
 
-            // Notification Table View or Empty State
+            // Notification List / Grouped Table View
             if (notifications.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -277,18 +305,15 @@ fun MainScreenContent(
                         }
                         Spacer(modifier = Modifier.height(20.dp))
                         Text(
-                            text = "No notifications captured yet",
-                            style = MaterialTheme.typography.titleLarge,
+                            text = "No logs captured yet for targets (${MainViewModel.TARGET_POC_NUMBERS.joinToString(", ")})",
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = if (!isPermissionGranted) {
-                                "Grant notification access above to start capturing incoming notifications."
-                            } else {
-                                "Listening for notifications... Incoming notifications will appear here instantly."
-                            },
+                            text = "Grant permissions above to automatically fetch historical SMS and capture live messages in context.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -297,7 +322,7 @@ fun MainScreenContent(
                 }
             } else {
                 Spacer(modifier = Modifier.height(8.dp))
-                NotificationTable(
+                GroupedNotificationSection(
                     notifications = notifications,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -309,137 +334,330 @@ fun MainScreenContent(
     }
 }
 
+fun getNormalizedSenderKey(notification: CapturedNotification, context: Context): String {
+    val rawTitle = notification.title ?: ""
+    if (rawTitle == "Me") return MainViewModel.TARGET_POC_NUMBERS.first()
+
+    MainViewModel.TARGET_POC_NUMBERS.forEach { targetNumber ->
+        val contactName = ContactUtils.getContactName(context, targetNumber)
+        val targetDigits = targetNumber.replace(Regex("[^0-9]"), "").takeLast(9)
+        val titleDigits = rawTitle.replace(Regex("[^0-9]"), "")
+
+        val matchesDigits = targetDigits.isNotEmpty() && titleDigits.endsWith(targetDigits)
+        val matchesRaw = rawTitle.contains(targetNumber)
+        val matchesName = contactName.isNotBlank() && (
+            rawTitle.contains(contactName, ignoreCase = true) || contactName.contains(rawTitle, ignoreCase = true)
+        )
+
+        if (matchesDigits || matchesRaw || matchesName) {
+            return targetNumber
+        }
+    }
+    return rawTitle
+}
+
 @Composable
-fun NotificationTable(
+fun GroupedNotificationSection(
     notifications: List<CapturedNotification>,
     modifier: Modifier = Modifier
 ) {
-    val horizontalScrollState = rememberScrollState()
-    val verticalScrollState = rememberScrollState()
-    val encryptedMap = remember { mutableStateMapOf<Long, Boolean>() }
-    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+    val context = LocalContext.current
+    val grouped = remember(notifications) {
+        notifications.groupBy { getNormalizedSenderKey(it, context) }
+    }
+
+    val summaryExpandedMap = remember { mutableStateMapOf<String, Boolean>() }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Captured Logs (Database Table)",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Text(
-                    text = "${notifications.size} records",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                )
+        grouped.forEach { (senderKey, groupLogs) ->
+            val displayName = remember(senderKey) {
+                ContactUtils.getContactName(context, senderKey)
             }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .weight(1f),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            tonalElevation = 1.dp
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .horizontalScroll(horizontalScrollState)
+            val isSummaryExpanded = summaryExpandedMap[senderKey] ?: false
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(verticalScrollState)
-                ) {
-                    // Table Header Row
+                Column(modifier = Modifier.padding(16.dp)) {
                     Row(
-                        modifier = Modifier
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TableCell(text = "ID", width = 80.dp, isHeader = true)
-                        TableCell(text = "App Package", width = 150.dp, isHeader = true)
-                        TableCell(text = "Sender", width = 140.dp, isHeader = true)
-                        TableCell(text = "Content", width = 280.dp, isHeader = true)
-                        TableCell(text = "Timestamp", width = 160.dp, isHeader = true)
-                        TableCell(text = "Encryption", width = 100.dp, isHeader = true)
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                    // Table Data Rows
-                    notifications.forEachIndexed { index, notification ->
-                        val isEncrypted = encryptedMap[notification.id] ?: false
-                        val formattedTime = dateFormat.format(Date(notification.timestamp))
-                        val displayText = if (isEncrypted) {
-                            simulateEncryption(notification.text)
-                        } else {
-                            notification.text ?: "(No Content)"
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Phone,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Context per # $displayName",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
 
-                        Row(
-                            modifier = Modifier
-                                .background(
-                                    if (index % 2 == 0) MaterialTheme.colorScheme.surface
-                                    else MaterialTheme.colorScheme.surfaceContainerLow
-                                )
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            TableCell(text = notification.id.toString(), width = 80.dp)
-                            TableCell(text = notification.packageName, width = 150.dp)
-                            TableCell(text = notification.title ?: "No Title", width = 140.dp)
-                            TableCell(
-                                text = displayText,
-                                width = 280.dp,
-                                isEncrypted = isEncrypted
-                            )
-                            TableCell(text = formattedTime, width = 160.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
 
-                            // Interactive Encryption/Decryption Toggle Button per Item
-                            Box(
-                                modifier = Modifier.width(100.dp),
-                                contentAlignment = Alignment.Center
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer
                             ) {
-                                IconButton(
-                                    onClick = {
-                                        encryptedMap[notification.id] = !isEncrypted
-                                    },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (isEncrypted) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
-                                        contentDescription = if (isEncrypted) "Decrypt message" else "Encrypt message",
-                                        tint = if (isEncrypted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
+                                Text(
+                                    text = "${groupLogs.size} logs",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Button(
+                                onClick = {
+                                    summaryExpandedMap[senderKey] = !isSummaryExpanded
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                ),
+                                contentPadding = PaddingValues(
+                                    horizontal = 10.dp,
+                                    vertical = 6.dp
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Star,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isSummaryExpanded) "Hide Summary" else "✨ Summary",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
-                        if (index < notifications.size - 1) {
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                                thickness = 0.5.dp
+                    }
+
+                    // Expandable AI Summary Card
+                    AnimatedVisibility(visible = isSummaryExpanded) {
+                        AiSummaryCard(
+                            displayName = displayName,
+                            senderKey = senderKey,
+                            groupLogs = groupLogs
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    NotificationTable(
+                        notifications = groupLogs,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AiSummaryCard(
+    displayName: String,
+    senderKey: String,
+    groupLogs: List<CapturedNotification>
+) {
+    val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()) }
+    val newestTime = groupLogs.firstOrNull()?.timestamp?.let { dateFormat.format(Date(it)) } ?: "N/A"
+    val oldestTime = groupLogs.lastOrNull()?.timestamp?.let { dateFormat.format(Date(it)) } ?: "N/A"
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.Star,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "AI Context Summary (Preview)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "• Target Contact: $displayName ($senderKey)",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = "• Total Context Messages: ${groupLogs.size} logs in thread",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = "• Context Time Range: $oldestTime → $newestTime",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Conversation Context Overview:",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "This conversation thread contains ${groupLogs.size} messages exchanged with $displayName. All historical SMS and live notifications are captured into a structured chronological payload ready to be passed to LLM APIs for AI summarization.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+        }
+    }
+}
+
+@Composable
+fun NotificationTable(
+    notifications: List<CapturedNotification>,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val horizontalScrollState = rememberScrollState()
+    val encryptedMap = remember { mutableStateMapOf<Long, Boolean>() }
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(horizontalScrollState)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Header
+                Row(
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TableCell(text = "ID", width = 60.dp, isHeader = true)
+                    TableCell(text = "App Package", width = 140.dp, isHeader = true)
+                    TableCell(text = "Sender", width = 130.dp, isHeader = true)
+                    TableCell(text = "Content", width = 260.dp, isHeader = true)
+                    TableCell(text = "Timestamp", width = 150.dp, isHeader = true)
+                    TableCell(text = "Encryption", width = 90.dp, isHeader = true)
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                // Rows
+                notifications.forEachIndexed { index, notification ->
+                    val isEncrypted = encryptedMap[notification.id] ?: false
+                    val formattedTime = dateFormat.format(Date(notification.timestamp))
+                    val displayText = if (isEncrypted) {
+                        simulateEncryption(notification.text)
+                    } else {
+                        notification.text ?: "(No Content)"
+                    }
+
+                    val senderLabel = when {
+                        notification.packageName == "historical.sms.sync.sent" -> "Me (Sent)"
+                        notification.title == "Me" -> "Me (Sent)"
+                        else -> ContactUtils.getContactName(context, notification.title ?: "Contact")
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .background(
+                                if (index % 2 == 0) MaterialTheme.colorScheme.surface
+                                else MaterialTheme.colorScheme.surfaceContainerLow
                             )
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TableCell(text = notification.id.toString(), width = 60.dp)
+                        TableCell(text = notification.packageName, width = 140.dp)
+                        TableCell(text = senderLabel, width = 130.dp)
+                        TableCell(
+                            text = displayText,
+                            width = 260.dp,
+                            isEncrypted = isEncrypted
+                        )
+                        TableCell(text = formattedTime, width = 150.dp)
+
+                        Box(
+                            modifier = Modifier.width(90.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    encryptedMap[notification.id] = !isEncrypted
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isEncrypted) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                                    contentDescription = if (isEncrypted) "Decrypt" else "Encrypt",
+                                    tint = if (isEncrypted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
+                    }
+                    if (index < notifications.size - 1) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                            thickness = 0.5.dp
+                        )
                     }
                 }
             }
@@ -506,17 +724,31 @@ fun MainScreenPopulatedPreview() {
     val sampleNotifications = listOf(
         CapturedNotification(
             id = 1L,
-            packageName = "com.google.android.gm",
-            title = "New Message from Alice",
-            text = "Hey! Are we still meeting for lunch at 12:30 PM today?",
-            timestamp = System.currentTimeMillis() - 120000L
+            packageName = "historical.sms.sync",
+            title = "09634255141",
+            text = "Hey Maah, are we meeting today?",
+            timestamp = System.currentTimeMillis() - 7200000L
         ),
         CapturedNotification(
             id = 2L,
-            packageName = "com.whatsapp",
-            title = "WhatsApp",
-            text = "Bob sent 3 photos.",
+            packageName = "historical.sms.sync.sent",
+            title = "09634255141",
+            text = "Yes! I will be there at 2 PM.",
+            timestamp = System.currentTimeMillis() - 5400000L
+        ),
+        CapturedNotification(
+            id = 3L,
+            packageName = "com.google.android.apps.messaging",
+            title = "09634255141",
+            text = "Great! See you at the coffee shop.",
             timestamp = System.currentTimeMillis() - 3600000L
+        ),
+        CapturedNotification(
+            id = 4L,
+            packageName = "historical.sms.sync.sent",
+            title = "09634255141",
+            text = "Sounds good!",
+            timestamp = System.currentTimeMillis() - 1800000L
         )
     )
     NotifyzerPOCPhase1Theme {

@@ -37,10 +37,22 @@ object NotificationRepository {
     fun addNotification(notification: CapturedNotification) {
         val dao = notificationDao
         if (dao != null) {
-            dao.insertNotification(NotificationEntity.fromDomainModel(notification))
+            val isDuplicate = dao.countDuplicate(
+                packageName = notification.packageName,
+                text = notification.text,
+                timestamp = notification.timestamp
+            ) > 0
+            if (!isDuplicate) {
+                dao.insertNotification(NotificationEntity.fromDomainModel(notification))
+            }
         } else {
             fallbackNotifications.update { current ->
-                listOf(notification) + current
+                val isDuplicate = current.any {
+                    it.packageName == notification.packageName &&
+                    it.text == notification.text &&
+                    it.timestamp == notification.timestamp
+                }
+                if (isDuplicate) current else listOf(notification) + current
             }
         }
     }

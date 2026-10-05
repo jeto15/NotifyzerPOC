@@ -1,10 +1,14 @@
 package com.example.notifyzerpocphase1.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.notifyzerpocphase1.model.CapturedNotification
 
-@Entity(tableName = "notifications")
+@Entity(
+    tableName = "notifications",
+    indices = [Index(value = ["packageName", "text", "timestamp"], unique = true)]
+)
 data class NotificationEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
