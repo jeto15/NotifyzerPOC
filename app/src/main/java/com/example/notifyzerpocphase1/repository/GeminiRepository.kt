@@ -33,16 +33,6 @@ class GeminiRepository {
             )
         }
 
-        if (!trimmedKey.startsWith("AIzaSy")) {
-            return@withContext Result.failure(
-                IllegalArgumentException(
-                    "Key Format Warning: Google AI Studio keys start with 'AIzaSy...'.\n" +
-                    "Your key starts with '${trimmedKey.take(8)}...'.\n\n" +
-                    "Please make sure you copied the API Key from aistudio.google.com/app/apikey (not an OAuth or project token)."
-                )
-            )
-        }
-
         // Dynamically discover supported models for this key
         val discoveredModels = fetchAvailableModels(trimmedKey)
         val modelsToTry = (discoveredModels + defaultModels).distinct()
@@ -90,9 +80,17 @@ class GeminiRepository {
     private fun fetchAvailableModels(apiKey: String): List<String> {
         val models = mutableListOf<String>()
         try {
-            val url = "https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey"
-            val request = Request.Builder().url(url).get().build()
-            val response = client.newCall(request).execute()
+            val isBearer = apiKey.startsWith("AQ.") || apiKey.startsWith("ya29.")
+            val url = if (isBearer) {
+                "https://generativelanguage.googleapis.com/v1beta/models"
+            } else {
+                "https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey"
+            }
+            val requestBuilder = Request.Builder().url(url).get()
+            if (isBearer) {
+                requestBuilder.addHeader("Authorization", "Bearer $apiKey")
+            }
+            val response = client.newCall(requestBuilder.build()).execute()
             val body = response.body?.string() ?: ""
 
             if (response.isSuccessful) {
@@ -100,7 +98,7 @@ class GeminiRepository {
                 val modelArray = json.optJSONArray("models") ?: JSONArray()
                 for (i in 0 until modelArray.length()) {
                     val m = modelArray.getJSONObject(i)
-                    val name = m.optString("name") // e.g. "models/gemini-1.5-flash"
+                    val name = m.optString("name")
                     val methods = m.optJSONArray("supportedGenerationMethods")
                     val supportsGenerate = methods != null && (0 until methods.length()).any { methods.getString(it) == "generateContent" }
                     if (supportsGenerate && name.isNotBlank()) {
@@ -116,7 +114,12 @@ class GeminiRepository {
 
     private fun generateViaRestApi(apiKey: String, apiVersion: String, modelName: String, prompt: String): Result<String> {
         return try {
-            val url = "https://generativelanguage.googleapis.com/$apiVersion/models/$modelName:generateContent?key=$apiKey"
+            val isBearer = apiKey.startsWith("AQ.") || apiKey.startsWith("ya29.")
+            val url = if (isBearer) {
+                "https://generativelanguage.googleapis.com/$apiVersion/models/$modelName:generateContent"
+            } else {
+                "https://generativelanguage.googleapis.com/$apiVersion/models/$modelName:generateContent?key=$apiKey"
+            }
             
             val jsonBody = JSONObject().apply {
                 put("contents", JSONArray().apply {
@@ -131,12 +134,15 @@ class GeminiRepository {
             }
 
             val requestBody = jsonBody.toString().toRequestBody("application/json".toMediaType())
-            val request = Request.Builder()
+            val requestBuilder = Request.Builder()
                 .url(url)
                 .post(requestBody)
-                .build()
 
-            val response = client.newCall(request).execute()
+            if (isBearer) {
+                requestBuilder.addHeader("Authorization", "Bearer $apiKey")
+            }
+
+            val response = client.newCall(requestBuilder.build()).execute()
             val responseString = response.body?.string() ?: ""
 
             if (response.isSuccessful) {
