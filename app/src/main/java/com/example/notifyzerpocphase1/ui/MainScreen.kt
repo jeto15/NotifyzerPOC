@@ -701,8 +701,17 @@ fun ApiKeyDialog(
                     label = { Text("Gemini API Key") },
                     placeholder = { Text("AIzaSy...") },
                     singleLine = true,
+                    isError = keyText.isNotBlank() && !keyText.startsWith("AIzaSy"),
                     modifier = Modifier.fillMaxWidth()
                 )
+                if (keyText.isNotBlank() && !keyText.startsWith("AIzaSy")) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "⚠️ Warning: Google AI Studio keys start with 'AIzaSy...'. Ensure you copied the API Key from aistudio.google.com/app/apikey (not an OAuth token).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "Get a free key at aistudio.google.com",

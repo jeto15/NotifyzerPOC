@@ -1,6 +1,5 @@
 package com.example.notifyzerpocphase1.repository
 
-import com.example.notifyzerpocphase1.util.DossierPromptBuilder
 import com.google.ai.client.generativeai.GenerativeModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,13 +18,12 @@ class GeminiRepository {
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    private val candidateModels = listOf(
+    private val defaultModels = listOf(
         "gemini-1.5-flash",
         "gemini-2.0-flash",
-        "gemini-1.5-pro"
+        "gemini-1.5-pro",
+        "gemini-1.5-flash-latest"
     )
-
-    private val apiVersions = listOf("v1beta", "v1")
 
     suspend fun generateDossier(apiKey: String, prompt: String): Result<String> = withContext(Dispatchers.IO) {
         val trimmedKey = apiKey.trim()
@@ -35,25 +33,37 @@ class GeminiRepository {
             )
         }
 
+        if (!trimmedKey.startsWith("AIzaSy")) {
+            return@withContext Result.failure(
+                IllegalArgumentException(
+                    "Key Format Warning: Google AI Studio keys start with 'AIzaSy...'.\n" +
+                    "Your key starts with '${trimmedKey.take(8)}...'.\n\n" +
+                    "Please make sure you copied the API Key from aistudio.google.com/app/apikey (not an OAuth or project token)."
+                )
+            )
+        }
+
+        // Dynamically discover supported models for this key
+        val discoveredModels = fetchAvailableModels(trimmedKey)
+        val modelsToTry = (discoveredModels + defaultModels).distinct()
+
         var lastErrorMessage = ""
 
-        // 1. Try OkHttp REST API calls across api versions and models
-        for (apiVersion in apiVersions) {
-            for (modelName in candidateModels) {
-                val restResult = generateViaRestApi(trimmedKey, apiVersion, modelName, prompt)
-                if (restResult.isSuccess) {
-                    return@withContext restResult
-                } else {
-                    val msg = restResult.exceptionOrNull()?.message ?: ""
-                    if (msg.isNotBlank()) {
-                        lastErrorMessage = msg
-                    }
+        // 1. Try REST API with discovered models
+        for (modelName in modelsToTry) {
+            val restResult = generateViaRestApi(trimmedKey, "v1beta", modelName, prompt)
+            if (restResult.isSuccess) {
+                return@withContext restResult
+            } else {
+                val msg = restResult.exceptionOrNull()?.message ?: ""
+                if (msg.isNotBlank()) {
+                    lastErrorMessage = msg
                 }
             }
         }
 
-        // 2. Try Official SDK
-        for (modelName in candidateModels) {
+        // 2. Try Official SDK as backup
+        for (modelName in modelsToTry) {
             try {
                 val generativeModel = GenerativeModel(
                     modelName = modelName,
@@ -72,13 +82,36 @@ class GeminiRepository {
             }
         }
 
-        // 3. Fallback: Local Rule-Based Strategic Dossier Generation if Google API rejects key/model
-        val localDossier = generateLocalFallbackDossier(prompt)
-        val fullReport = "⚠️ [Note: Google API returned: $lastErrorMessage]\n\n" +
-                         "Below is the Tactical Coaching Dossier generated from local analysis:\n\n" +
-                         localDossier
+        Result.failure(
+            Exception("Gemini API Error: $lastErrorMessage\n\nPlease check your key permissions at aistudio.google.com/app/apikey.")
+        )
+    }
 
-        Result.success(fullReport)
+    private fun fetchAvailableModels(apiKey: String): List<String> {
+        val models = mutableListOf<String>()
+        try {
+            val url = "https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey"
+            val request = Request.Builder().url(url).get().build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+
+            if (response.isSuccessful) {
+                val json = JSONObject(body)
+                val modelArray = json.optJSONArray("models") ?: JSONArray()
+                for (i in 0 until modelArray.length()) {
+                    val m = modelArray.getJSONObject(i)
+                    val name = m.optString("name") // e.g. "models/gemini-1.5-flash"
+                    val methods = m.optJSONArray("supportedGenerationMethods")
+                    val supportsGenerate = methods != null && (0 until methods.length()).any { methods.getString(it) == "generateContent" }
+                    if (supportsGenerate && name.isNotBlank()) {
+                        models.add(name.removePrefix("models/"))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return models
     }
 
     private fun generateViaRestApi(apiKey: String, apiVersion: String, modelName: String, prompt: String): Result<String> {
@@ -120,7 +153,7 @@ class GeminiRepository {
                         }
                     }
                 }
-                Result.failure(Exception("Empty response body returned."))
+                Result.failure(Exception("Empty candidate text returned."))
             } else {
                 val parsedError = try {
                     val errObj = JSONObject(responseString).optJSONObject("error")
@@ -128,26 +161,10 @@ class GeminiRepository {
                 } catch (e: Exception) {
                     responseString
                 }
-                Result.failure(Exception("Google API Error (HTTP ${response.code}): $parsedError"))
+                Result.failure(Exception("HTTP ${response.code}: $parsedError"))
             }
         } catch (e: Exception) {
             Result.failure(e)
         }
-    }
-
-    private fun generateLocalFallbackDossier(prompt: String): String {
-        return """
-1. The Subtext Analysis
-The latest message indicates a test of emotional presence and responsiveness. The sender is evaluating whether you are centered or easily pulled off-balance.
-
-2. Power Dynamic & Pacing Check (Corey Wayne Framework)
-Current 'tennis match' status: You must match effort and avoid over-pursuing or falling into the 'illusion of action'. Do not double text or over-explain. Allow 12 to 24 hours of space before responding if the message was low-effort.
-
-3. Tactical Accountability (Marcus Taylor Framework)
-Hold yourself accountable to your Tactical Objective:
-• Enforce firm emotional boundaries.
-• Keep your reply concise, confident, and centered.
-• Do not validate low-effort communication; mirror their brevity.
-""".trimIndent()
     }
 }
