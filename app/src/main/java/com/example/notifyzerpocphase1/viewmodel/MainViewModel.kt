@@ -20,10 +20,17 @@ import kotlinx.coroutines.flow.map
 
 import com.example.notifyzerpocphase1.util.ContactUtils
 
+import com.example.notifyzerpocphase1.repository.GeminiRepository
+import com.example.notifyzerpocphase1.util.ApiKeyManager
+import com.example.notifyzerpocphase1.util.DossierPromptBuilder
+import kotlinx.coroutines.flow.update
+
 class MainViewModel : ViewModel() {
     companion object {
         val TARGET_POC_NUMBERS = listOf("09634255141", "09558015949")
     }
+
+    private val geminiRepository = GeminiRepository()
 
     private val _notifications = NotificationRepository.notifications
     val notifications: StateFlow<List<CapturedNotification>> = _notifications
@@ -32,6 +39,15 @@ class MainViewModel : ViewModel() {
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    private val _dossierState = MutableStateFlow<Map<String, String>>(emptyMap())
+    val dossierState: StateFlow<Map<String, String>> = _dossierState.asStateFlow()
+
+    private val _isLoadingDossier = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val isLoadingDossier: StateFlow<Map<String, Boolean>> = _isLoadingDossier.asStateFlow()
+
+    private val _dossierError = MutableStateFlow<Map<String, String>>(emptyMap())
+    val dossierError: StateFlow<Map<String, String>> = _dossierError.asStateFlow()
 
     fun getFilteredNotifications(context: Context, list: List<CapturedNotification>): List<CapturedNotification> {
         return list.filter { isTargetPocNotification(it, context) }
@@ -56,6 +72,39 @@ class MainViewModel : ViewModel() {
             )
 
             matchesTitleDigits || matchesTextDigits || containsRaw || matchesContactName
+        }
+    }
+
+    fun generateDossierForContact(
+        context: Context,
+        senderKey: String,
+        groupLogs: List<CapturedNotification>
+    ) {
+        val apiKey = ApiKeyManager.getApiKey(context)
+        if (apiKey.isBlank()) {
+            _dossierError.update { it + (senderKey to "Please set your Gemini API key in Settings (BYOK).") }
+            return
+        }
+
+        viewModelScope.launch {
+            _isLoadingDossier.update { it + (senderKey to true) }
+            _dossierError.update { it - senderKey }
+
+            val displayName = ContactUtils.getContactName(context, senderKey)
+            val prompt = DossierPromptBuilder.buildPrompt(
+                displayName = displayName,
+                groupLogs = groupLogs
+            )
+
+            val result = geminiRepository.generateDossier(apiKey = apiKey, prompt = prompt)
+
+            result.onSuccess { text ->
+                _dossierState.update { it + (senderKey to text) }
+                _isLoadingDossier.update { it + (senderKey to false) }
+            }.onFailure { exception ->
+                _dossierError.update { it + (senderKey to (exception.localizedMessage ?: "Failed to generate AI Dossier.")) }
+                _isLoadingDossier.update { it + (senderKey to false) }
+            }
         }
     }
 

@@ -25,30 +25,36 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Phone
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -56,10 +62,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,6 +78,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.notifyzerpocphase1.model.CapturedNotification
 import com.example.notifyzerpocphase1.ui.theme.NotifyzerPOCPhase1Theme
+import com.example.notifyzerpocphase1.util.ApiKeyManager
 import com.example.notifyzerpocphase1.util.ContactUtils
 import com.example.notifyzerpocphase1.util.PermissionUtils
 import com.example.notifyzerpocphase1.viewmodel.MainViewModel
@@ -84,6 +94,11 @@ fun MainScreen(
     val context = LocalContext.current
     val notifications by viewModel.notifications.collectAsState()
     val isPermissionGranted by viewModel.isPermissionGranted.collectAsState()
+    val dossierState by viewModel.dossierState.collectAsState()
+    val isLoadingDossier by viewModel.isLoadingDossier.collectAsState()
+    val dossierError by viewModel.dossierError.collectAsState()
+
+    var showApiKeyDialog by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -98,11 +113,6 @@ fun MainScreen(
         val smsGranted = ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.READ_SMS
-        ) == PackageManager.PERMISSION_GRANTED
-
-        val contactsGranted = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.READ_CONTACTS
         ) == PackageManager.PERMISSION_GRANTED
 
         if (smsGranted) {
@@ -124,6 +134,9 @@ fun MainScreen(
     MainScreenContent(
         notifications = filteredNotifications,
         isPermissionGranted = isPermissionGranted,
+        dossierState = dossierState,
+        isLoadingDossier = isLoadingDossier,
+        dossierError = dossierError,
         onClearLogs = { viewModel.clearLogs() },
         onGrantPermissions = {
             permissionLauncher.launch(
@@ -133,8 +146,26 @@ fun MainScreen(
                 )
             )
         },
+        onOpenApiKeyDialog = { showApiKeyDialog = true },
+        onGenerateDossier = { senderKey, groupLogs ->
+            if (!ApiKeyManager.hasApiKey(context)) {
+                showApiKeyDialog = true
+            } else {
+                viewModel.generateDossierForContact(context, senderKey, groupLogs)
+            }
+        },
         modifier = modifier.fillMaxSize()
     )
+
+    if (showApiKeyDialog) {
+        ApiKeyDialog(
+            onDismiss = { showApiKeyDialog = false },
+            onSaveKey = { key ->
+                ApiKeyManager.saveApiKey(context, key)
+                showApiKeyDialog = false
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -142,11 +173,18 @@ fun MainScreen(
 fun MainScreenContent(
     notifications: List<CapturedNotification>,
     isPermissionGranted: Boolean,
+    dossierState: Map<String, String> = emptyMap(),
+    isLoadingDossier: Map<String, Boolean> = emptyMap(),
+    dossierError: Map<String, String> = emptyMap(),
     onClearLogs: () -> Unit,
     onGrantPermissions: () -> Unit = {},
+    onOpenApiKeyDialog: () -> Unit = {},
+    onGenerateDossier: (String, List<CapturedNotification>) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val isPreview = LocalInspectionMode.current
+    val hasKey = if (isPreview) true else ApiKeyManager.hasApiKey(context)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -186,6 +224,15 @@ fun MainScreenContent(
                     }
                 },
                 actions = {
+                    // BYOK Gemini API Key button
+                    IconButton(onClick = onOpenApiKeyDialog) {
+                        Icon(
+                            imageVector = Icons.Rounded.Key,
+                            contentDescription = "Gemini API Key (BYOK)",
+                            tint = if (hasKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                    }
+
                     if (notifications.isNotEmpty()) {
                         IconButton(onClick = onClearLogs) {
                             Icon(
@@ -324,6 +371,10 @@ fun MainScreenContent(
                 Spacer(modifier = Modifier.height(8.dp))
                 GroupedNotificationSection(
                     notifications = notifications,
+                    dossierState = dossierState,
+                    isLoadingDossier = isLoadingDossier,
+                    dossierError = dossierError,
+                    onGenerateDossier = onGenerateDossier,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
@@ -359,6 +410,10 @@ fun getNormalizedSenderKey(notification: CapturedNotification, context: Context)
 @Composable
 fun GroupedNotificationSection(
     notifications: List<CapturedNotification>,
+    dossierState: Map<String, String> = emptyMap(),
+    isLoadingDossier: Map<String, Boolean> = emptyMap(),
+    dossierError: Map<String, String> = emptyMap(),
+    onGenerateDossier: (String, List<CapturedNotification>) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -435,7 +490,11 @@ fun GroupedNotificationSection(
 
                             Button(
                                 onClick = {
-                                    summaryExpandedMap[senderKey] = !isSummaryExpanded
+                                    val newExpanded = !isSummaryExpanded
+                                    summaryExpandedMap[senderKey] = newExpanded
+                                    if (newExpanded && dossierState[senderKey] == null) {
+                                        onGenerateDossier(senderKey, groupLogs)
+                                    }
                                 },
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(
@@ -463,12 +522,16 @@ fun GroupedNotificationSection(
                         }
                     }
 
-                    // Expandable AI Summary Card
+                    // Expandable AI Summary & Dossier Card
                     AnimatedVisibility(visible = isSummaryExpanded) {
                         AiSummaryCard(
                             displayName = displayName,
                             senderKey = senderKey,
-                            groupLogs = groupLogs
+                            groupLogs = groupLogs,
+                            dossierText = dossierState[senderKey],
+                            isLoading = isLoadingDossier[senderKey] == true,
+                            errorMessage = dossierError[senderKey],
+                            onRetry = { onGenerateDossier(senderKey, groupLogs) }
                         )
                     }
 
@@ -490,75 +553,190 @@ fun GroupedNotificationSection(
 fun AiSummaryCard(
     displayName: String,
     senderKey: String,
-    groupLogs: List<CapturedNotification>
+    groupLogs: List<CapturedNotification>,
+    dossierText: String?,
+    isLoading: Boolean,
+    errorMessage: String?,
+    onRetry: () -> Unit
 ) {
-    val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()) }
-    val newestTime = groupLogs.firstOrNull()?.timestamp?.let { dateFormat.format(Date(it)) } ?: "N/A"
-    val oldestTime = groupLogs.lastOrNull()?.timestamp?.let { dateFormat.format(Date(it)) } ?: "N/A"
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 12.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f),
             contentColor = MaterialTheme.colorScheme.onTertiaryContainer
         )
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Rounded.Star,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.tertiary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "AI Context Summary (Preview)",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Rounded.Star,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Tactical Coaching Dossier (Gemini AI)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+
+                if (!isLoading && dossierText != null) {
+                    IconButton(
+                        onClick = onRetry,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = "Regenerate Dossier",
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-                text = "• Target Contact: $displayName ($senderKey)",
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = "• Total Context Messages: ${groupLogs.size} logs in thread",
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = "• Context Time Range: $oldestTime → $newestTime",
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.Medium
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Conversation Context Overview:",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.tertiary
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "This conversation thread contains ${groupLogs.size} messages exchanged with $displayName. All historical SMS and live notifications are captured into a structured chronological payload ready to be passed to LLM APIs for AI summarization.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onTertiaryContainer
-            )
+            if (isLoading) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Generating Tactical Coaching Dossier from Gemini AI...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            } else if (errorMessage != null) {
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = onRetry,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.tertiary
+                        )
+                    ) {
+                        Text("Retry Dossier Generation")
+                    }
+                }
+            } else if (dossierText != null) {
+                SelectionContainer {
+                    Text(
+                        text = dossierText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+            } else {
+                Text(
+                    text = "Tap '✨ Summary' above to generate a tactical coaching dossier for this conversation using Gemini AI.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            }
         }
     }
+}
+
+@Composable
+fun ApiKeyDialog(
+    onDismiss: () -> Unit,
+    onSaveKey: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val isPreview = LocalInspectionMode.current
+    val initialKey = if (isPreview) "" else ApiKeyManager.getApiKey(context)
+    var keyText by remember { mutableStateOf(initialKey) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = @Composable {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.Key,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Gemini API Key (BYOK)")
+            }
+        },
+        text = @Composable {
+            Column {
+                Text(
+                    text = "Supply your own Gemini API Key (Bring Your Own Key) to generate AI Coaching Dossiers offloading compute costs.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = keyText,
+                    onValueChange = { newValue: String -> keyText = newValue },
+                    label = { Text("Gemini API Key") },
+                    placeholder = { Text("AIzaSy...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Get a free key at aistudio.google.com",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        },
+        confirmButton = @Composable {
+            Button(
+                onClick = { onSaveKey(keyText) }
+            ) {
+                Text("Save Key")
+            }
+        },
+        dismissButton = @Composable {
+            Row {
+                if (ApiKeyManager.hasApiKey(context)) {
+                    TextButton(
+                        onClick = {
+                            ApiKeyManager.clearApiKey(context)
+                            keyText = ""
+                            onDismiss()
+                        }
+                    ) {
+                        Text("Clear Key", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        }
+    )
 }
 
 @Composable
