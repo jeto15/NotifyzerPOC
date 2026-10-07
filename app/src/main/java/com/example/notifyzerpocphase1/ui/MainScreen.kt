@@ -77,7 +77,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.notifyzerpocphase1.model.CapturedNotification
-import com.example.notifyzerpocphase1.ui.theme.NotifyzerPOCPhase1Theme
+import com.example.notifyzerpocphase1.ui.theme.CrucibleIntelligenceTheme
 import com.example.notifyzerpocphase1.util.ApiKeyManager
 import com.example.notifyzerpocphase1.util.ContactUtils
 import com.example.notifyzerpocphase1.util.PermissionUtils
@@ -210,7 +210,7 @@ fun MainScreenContent(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Notifyzer Live Logs",
+                                text = "Crucible Intelligence Live Logs",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
@@ -295,7 +295,7 @@ fun MainScreenContent(
                         }
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "Notifyzer needs notification access and SMS read permission to automatically fetch historical SMS and capture live messages.",
+                            text = "Crucible Intelligence needs notification access and SMS read permission to automatically fetch historical SMS and capture live messages.",
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Spacer(modifier = Modifier.height(16.dp))
@@ -896,7 +896,7 @@ fun simulateEncryption(text: String?): String {
 @Preview(showBackground = true, device = "id:pixel_6")
 @Composable
 fun MainScreenEmptyPreview() {
-    NotifyzerPOCPhase1Theme {
+    CrucibleIntelligenceTheme {
         MainScreenContent(
             notifications = emptyList(),
             isPermissionGranted = false,
@@ -938,7 +938,7 @@ fun MainScreenPopulatedPreview() {
             timestamp = System.currentTimeMillis() - 1800000L
         )
     )
-    NotifyzerPOCPhase1Theme {
+    CrucibleIntelligenceTheme {
         MainScreenContent(
             notifications = sampleNotifications,
             isPermissionGranted = true,

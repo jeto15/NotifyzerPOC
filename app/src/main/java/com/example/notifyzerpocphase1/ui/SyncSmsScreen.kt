@@ -48,7 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.notifyzerpocphase1.model.HistoricalSms
-import com.example.notifyzerpocphase1.ui.theme.NotifyzerPOCPhase1Theme
+import com.example.notifyzerpocphase1.ui.theme.CrucibleIntelligenceTheme
 import com.example.notifyzerpocphase1.util.ContactUtils
 import com.example.notifyzerpocphase1.viewmodel.SyncSmsViewModel
 import java.text.SimpleDateFormat
@@ -290,7 +290,7 @@ fun SyncedSmsBubblePreview() {
         date = System.currentTimeMillis(),
         type = 1
     )
-    NotifyzerPOCPhase1Theme {
+    CrucibleIntelligenceTheme {
         Surface(modifier = Modifier.padding(16.dp)) {
             SyncedSmsBubble(sms = sampleMsg)
         }

@@ -17,7 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.tooling.preview.Preview
-import com.example.notifyzerpocphase1.ui.theme.NotifyzerPOCPhase1Theme
+import com.example.notifyzerpocphase1.ui.theme.CrucibleIntelligenceTheme
 import com.example.notifyzerpocphase1.model.HistoricalSms
 import com.example.notifyzerpocphase1.util.ContactUtils
 import com.example.notifyzerpocphase1.viewmodel.HistoricalSmsViewModel
@@ -141,7 +141,7 @@ fun HistoricalSmsPreview() {
         HistoricalSms(address = "+1234567890", body = "Hello, your verification code is 482910.", date = System.currentTimeMillis() - 3600000L, type = 1),
         HistoricalSms(address = "+1234567890", body = "Thank you!", date = System.currentTimeMillis() - 1800000L, type = 2)
     )
-    NotifyzerPOCPhase1Theme {
+    CrucibleIntelligenceTheme {
         Surface {
             Column(modifier = Modifier.padding(16.dp)) {
                 ContactItem(contact = "+1234567890", messages = sampleMessages)

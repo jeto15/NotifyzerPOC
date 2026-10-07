@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 
 object ApiKeyManager {
-    private const val PREFS_NAME = "notifyzer_user_prefs"
+    private const val PREFS_NAME = "crucible_intelligence_user_prefs"
     private const val KEY_GEMINI_API_KEY = "gemini_api_key"
 
     private fun getPrefs(context: Context): SharedPreferences {

@@ -7,7 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import com.example.notifyzerpocphase1.repository.NotificationRepository
 import com.example.notifyzerpocphase1.ui.MainScreen
-import com.example.notifyzerpocphase1.ui.theme.NotifyzerPOCPhase1Theme
+import com.example.notifyzerpocphase1.ui.theme.CrucibleIntelligenceTheme
 import com.example.notifyzerpocphase1.viewmodel.MainViewModel
 
 class MainActivity : ComponentActivity() {
@@ -19,7 +19,7 @@ class MainActivity : ComponentActivity() {
         NotificationRepository.initialize(applicationContext)
         enableEdgeToEdge()
         setContent {
-            NotifyzerPOCPhase1Theme {
+            CrucibleIntelligenceTheme {
                 MainScreen(viewModel = viewModel)
             }
         }

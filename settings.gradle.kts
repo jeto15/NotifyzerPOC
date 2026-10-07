@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Notifyzer POC Phase 1"
+rootProject.name = "Crucible Intelligence"
 include(":app")
  
