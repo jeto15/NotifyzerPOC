@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Base64
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Lock
@@ -101,6 +103,7 @@ fun MainScreen(
     val dossierError by viewModel.dossierError.collectAsState()
 
     var showApiKeyDialog by remember { mutableStateOf(false) }
+    var showJsonImportDialog by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -141,6 +144,7 @@ fun MainScreen(
         dossierError = dossierError,
         onClearLogs = { viewModel.clearLogs() },
         onLoadMockData = { viewModel.loadMockData(context) },
+        onOpenJsonImportDialog = { showJsonImportDialog = true },
         onGrantPermissions = {
             permissionLauncher.launch(
                 arrayOf(
@@ -169,6 +173,19 @@ fun MainScreen(
             }
         )
     }
+
+    if (showJsonImportDialog) {
+        ImportJsonDialog(
+            onDismiss = { showJsonImportDialog = false },
+            onImportJson = { jsonString ->
+                viewModel.importJsonConversation(context, jsonString) { result ->
+                    val message = result.getOrElse { it.localizedMessage ?: "Failed to import JSON" }
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
+                showJsonImportDialog = false
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -181,6 +198,7 @@ fun MainScreenContent(
     dossierError: Map<String, String> = emptyMap(),
     onClearLogs: () -> Unit,
     onLoadMockData: () -> Unit = {},
+    onOpenJsonImportDialog: () -> Unit = {},
     onGrantPermissions: () -> Unit = {},
     onOpenApiKeyDialog: () -> Unit = {},
     onGenerateDossier: (String, List<CapturedNotification>) -> Unit = { _, _ -> },
@@ -234,6 +252,15 @@ fun MainScreenContent(
                             imageVector = Icons.Rounded.Key,
                             contentDescription = "Gemini API Key (BYOK)",
                             tint = if (hasKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    // Import JSON Conversation button
+                    IconButton(onClick = onOpenJsonImportDialog) {
+                        Icon(
+                            imageVector = Icons.Rounded.Code,
+                            contentDescription = "Import JSON Conversation",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
 
@@ -756,6 +783,91 @@ fun ApiKeyDialog(
                 TextButton(onClick = onDismiss) {
                     Text("Cancel")
                 }
+            }
+        }
+    )
+}
+
+@Composable
+fun ImportJsonDialog(
+    onDismiss: () -> Unit,
+    onImportJson: (String) -> Unit
+) {
+    val context = LocalContext.current
+    var jsonText by remember { mutableStateOf("") }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            try {
+                val inputStream = context.contentResolver.openInputStream(it)
+                val content = inputStream?.bufferedReader()?.use { reader -> reader.readText() } ?: ""
+                if (content.isNotBlank()) {
+                    jsonText = content
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = @Composable {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.Code,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Import JSON Conversation")
+            }
+        },
+        text = @Composable {
+            Column {
+                Text(
+                    text = "Paste your JSON conversation below or pick a .json file from storage:",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = { filePickerLauncher.launch("*/*") },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("📁 Select .json File from Storage")
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = jsonText,
+                    onValueChange = { newValue: String -> jsonText = newValue },
+                    label = { Text("JSON Conversation Payload") },
+                    placeholder = { Text("{\n  \"phoneNumber\": \"+15550198888\",\n  \"messages\": [...]\n}") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                )
+            }
+        },
+        confirmButton = @Composable {
+            Button(
+                onClick = {
+                    if (jsonText.isNotBlank()) {
+                        onImportJson(jsonText)
+                    }
+                }
+            ) {
+                Text("Import Conversation")
+            }
+        },
+        dismissButton = @Composable {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
             }
         }
     )

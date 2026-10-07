@@ -24,6 +24,7 @@ import com.example.notifyzerpocphase1.util.ContactUtils
 import com.example.notifyzerpocphase1.repository.GeminiRepository
 import com.example.notifyzerpocphase1.util.ApiKeyManager
 import com.example.notifyzerpocphase1.util.DossierPromptBuilder
+import com.example.notifyzerpocphase1.util.JsonConversationImporter
 import com.example.notifyzerpocphase1.util.MockDataImporter
 import kotlinx.coroutines.flow.update
 
@@ -154,6 +155,13 @@ class MainViewModel : ViewModel() {
     fun loadMockData(context: Context) {
         viewModelScope.launch {
             MockDataImporter.injectMockConversation(context)
+        }
+    }
+
+    fun importJsonConversation(context: Context, jsonString: String, onResult: (Result<String>) -> Unit) {
+        viewModelScope.launch {
+            val result = JsonConversationImporter.importJsonConversation(context, jsonString)
+            onResult(result)
         }
     }
 }
