@@ -1,5 +1,6 @@
 package com.example.notifyzerpocphase1.util
 
+import com.example.notifyzerpocphase1.data.EntityProfile
 import com.example.notifyzerpocphase1.model.CapturedNotification
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -10,11 +11,12 @@ object DossierPromptBuilder {
     fun buildPrompt(
         displayName: String,
         groupLogs: List<CapturedNotification>,
-        identityRole: String = "User seeking strategic relationship & communication guidance",
-        historyContext: String = "Ongoing message history with contact $displayName",
-        currentDynamic: String = "Active message exchange requiring strategic analysis and response planning",
-        tacticalObjective: String = "Maintain emotional centering, enforce healthy boundaries, avoid over-pursuing, and guide communication effectively"
+        entityProfile: EntityProfile? = null
     ): String {
+        val identityRole = entityProfile?.identityRole ?: "User seeking strategic relationship & communication guidance"
+        val historyContext = entityProfile?.history ?: "Ongoing message history with contact $displayName"
+        val currentDynamic = entityProfile?.currentDynamic ?: "Active message exchange requiring strategic analysis and response planning"
+        val tacticalObjective = entityProfile?.tacticalObjective ?: "Maintain emotional centering, enforce healthy boundaries, avoid over-pursuing, and guide communication effectively"
         val sortedLogs = groupLogs.sortedBy { it.timestamp }
         val dateFormat = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
 

@@ -29,6 +29,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Lock
@@ -138,6 +140,7 @@ fun MainScreen(
         isLoadingDossier = isLoadingDossier,
         dossierError = dossierError,
         onClearLogs = { viewModel.clearLogs() },
+        onLoadMockData = { viewModel.loadMockData(context) },
         onGrantPermissions = {
             permissionLauncher.launch(
                 arrayOf(
@@ -177,6 +180,7 @@ fun MainScreenContent(
     isLoadingDossier: Map<String, Boolean> = emptyMap(),
     dossierError: Map<String, String> = emptyMap(),
     onClearLogs: () -> Unit,
+    onLoadMockData: () -> Unit = {},
     onGrantPermissions: () -> Unit = {},
     onOpenApiKeyDialog: () -> Unit = {},
     onGenerateDossier: (String, List<CapturedNotification>) -> Unit = { _, _ -> },
@@ -230,6 +234,15 @@ fun MainScreenContent(
                             imageVector = Icons.Rounded.Key,
                             contentDescription = "Gemini API Key (BYOK)",
                             tint = if (hasKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    // Debug: Load Mock Data button
+                    IconButton(onClick = onLoadMockData) {
+                        Icon(
+                            imageVector = Icons.Rounded.BugReport,
+                            contentDescription = "Load Mock Data",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
 

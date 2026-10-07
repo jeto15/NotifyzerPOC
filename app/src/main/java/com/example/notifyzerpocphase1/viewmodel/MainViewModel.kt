@@ -4,6 +4,7 @@ import android.content.Context
 import android.provider.Telephony
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.notifyzerpocphase1.data.AppDatabase
 import com.example.notifyzerpocphase1.model.CapturedNotification
 import com.example.notifyzerpocphase1.repository.NotificationRepository
 import com.example.notifyzerpocphase1.repository.SmsRepository
@@ -23,11 +24,12 @@ import com.example.notifyzerpocphase1.util.ContactUtils
 import com.example.notifyzerpocphase1.repository.GeminiRepository
 import com.example.notifyzerpocphase1.util.ApiKeyManager
 import com.example.notifyzerpocphase1.util.DossierPromptBuilder
+import com.example.notifyzerpocphase1.util.MockDataImporter
 import kotlinx.coroutines.flow.update
 
 class MainViewModel : ViewModel() {
     companion object {
-        val TARGET_POC_NUMBERS = listOf("09634255141", "09558015949")
+        val TARGET_POC_NUMBERS = listOf("09634255141", "09558015949", MockDataImporter.MOCK_PHONE_NUMBER)
     }
 
     private val geminiRepository = GeminiRepository()
@@ -91,9 +93,15 @@ class MainViewModel : ViewModel() {
             _dossierError.update { it - senderKey }
 
             val displayName = ContactUtils.getContactName(context, senderKey)
+            
+            val db = AppDatabase.getDatabase(context)
+            val profileDao = db.entityProfileDao()
+            val entityProfile = profileDao.getProfile(senderKey)
+
             val prompt = DossierPromptBuilder.buildPrompt(
                 displayName = displayName,
-                groupLogs = groupLogs
+                groupLogs = groupLogs,
+                entityProfile = entityProfile
             )
 
             val result = geminiRepository.generateDossier(apiKey = apiKey, prompt = prompt)
@@ -141,5 +149,11 @@ class MainViewModel : ViewModel() {
 
     fun clearLogs() {
         NotificationRepository.clearNotifications()
+    }
+
+    fun loadMockData(context: Context) {
+        viewModelScope.launch {
+            MockDataImporter.injectMockConversation(context)
+        }
     }
 }
