@@ -19,10 +19,13 @@ class GeminiRepository {
         .build()
 
     private val defaultModels = listOf(
+        "gemini-2.5-flash",
+        "gemini-flash-latest",
+        "gemini-2.5-flash-lite",
+        "gemini-flash-lite-latest",
+        "gemini-2.5-pro",
         "gemini-1.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash-latest"
+        "gemini-2.0-flash"
     )
 
     suspend fun generateDossier(apiKey: String, prompt: String): Result<String> = withContext(Dispatchers.IO) {
