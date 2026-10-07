@@ -14,16 +14,11 @@ import java.util.concurrent.TimeUnit
 class GeminiRepository {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
         .build()
 
-    private val defaultModels = listOf(
-        "gemini-1.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash-latest"
-    )
+    private val fastModels = listOf("gemini-1.5-flash", "gemini-2.0-flash")
 
     suspend fun generateDossier(apiKey: String, prompt: String): Result<String> = withContext(Dispatchers.IO) {
         val trimmedKey = apiKey.trim()
@@ -33,83 +28,36 @@ class GeminiRepository {
             )
         }
 
-        // Dynamically discover supported models for this key
-        val discoveredModels = fetchAvailableModels(trimmedKey)
-        val modelsToTry = (discoveredModels + defaultModels).distinct()
+        var lastError = ""
 
-        var lastErrorMessage = ""
-
-        // 1. Try REST API with discovered models
-        for (modelName in modelsToTry) {
+        // 1. Direct REST API call to fast model (1-2s ultra-low latency)
+        for (modelName in fastModels) {
             val restResult = generateViaRestApi(trimmedKey, "v1beta", modelName, prompt)
             if (restResult.isSuccess) {
                 return@withContext restResult
             } else {
-                val msg = restResult.exceptionOrNull()?.message ?: ""
-                if (msg.isNotBlank()) {
-                    lastErrorMessage = msg
-                }
+                lastError = restResult.exceptionOrNull()?.message ?: ""
             }
         }
 
-        // 2. Try Official SDK as backup
-        for (modelName in modelsToTry) {
-            try {
-                val generativeModel = GenerativeModel(
-                    modelName = modelName,
-                    apiKey = trimmedKey
-                )
-                val response = generativeModel.generateContent(prompt)
-                val text = response.text
-                if (!text.isNullOrBlank()) {
-                    return@withContext Result.success(text)
-                }
-            } catch (e: Exception) {
-                val msg = e.message ?: e.toString()
-                if (msg.isNotBlank()) {
-                    lastErrorMessage = msg
-                }
+        // 2. Backup SDK call if REST fails
+        try {
+            val generativeModel = GenerativeModel(
+                modelName = "gemini-1.5-flash",
+                apiKey = trimmedKey
+            )
+            val response = generativeModel.generateContent(prompt)
+            val text = response.text
+            if (!text.isNullOrBlank()) {
+                return@withContext Result.success(text)
             }
+        } catch (e: Exception) {
+            lastError = e.message ?: e.toString()
         }
 
         Result.failure(
-            Exception("Gemini API Error: $lastErrorMessage\n\nPlease check your key permissions at aistudio.google.com/app/apikey.")
+            Exception("Gemini API Error: $lastError\n\nPlease check your key permissions at aistudio.google.com/app/apikey.")
         )
-    }
-
-    private fun fetchAvailableModels(apiKey: String): List<String> {
-        val models = mutableListOf<String>()
-        try {
-            val isBearer = apiKey.startsWith("AQ.") || apiKey.startsWith("ya29.")
-            val url = if (isBearer) {
-                "https://generativelanguage.googleapis.com/v1beta/models"
-            } else {
-                "https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey"
-            }
-            val requestBuilder = Request.Builder().url(url).get()
-            if (isBearer) {
-                requestBuilder.addHeader("Authorization", "Bearer $apiKey")
-            }
-            val response = client.newCall(requestBuilder.build()).execute()
-            val body = response.body?.string() ?: ""
-
-            if (response.isSuccessful) {
-                val json = JSONObject(body)
-                val modelArray = json.optJSONArray("models") ?: JSONArray()
-                for (i in 0 until modelArray.length()) {
-                    val m = modelArray.getJSONObject(i)
-                    val name = m.optString("name")
-                    val methods = m.optJSONArray("supportedGenerationMethods")
-                    val supportsGenerate = methods != null && (0 until methods.length()).any { methods.getString(it) == "generateContent" }
-                    if (supportsGenerate && name.isNotBlank()) {
-                        models.add(name.removePrefix("models/"))
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return models
     }
 
     private fun generateViaRestApi(apiKey: String, apiVersion: String, modelName: String, prompt: String): Result<String> {
