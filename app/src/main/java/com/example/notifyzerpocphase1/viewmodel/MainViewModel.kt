@@ -128,7 +128,7 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             val smsRepository = SmsRepository(context)
 
-            TARGET_POC_NUMBERS.forEach { targetNumber ->
+            TARGET_POC_NUMBERS.filter { it != MockDataImporter.MOCK_PHONE_NUMBER }.forEach { targetNumber ->
                 val conversation = smsRepository.getConversation(targetNumber)
                 
                 conversation.forEach { sms ->

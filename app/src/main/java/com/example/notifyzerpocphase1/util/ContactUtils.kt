@@ -3,13 +3,19 @@ package com.example.notifyzerpocphase1.util
 import android.content.Context
 import android.net.Uri
 import android.provider.ContactsContract
+import java.util.concurrent.ConcurrentHashMap
 
 object ContactUtils {
+    private val contactNameCache = ConcurrentHashMap<String, String>()
+
     fun getContactName(context: Context, phoneNumber: String): String {
         if (phoneNumber.isBlank() || phoneNumber == "Unknown" || phoneNumber == "Me") {
             return phoneNumber
         }
-        
+
+        contactNameCache[phoneNumber]?.let { return it }
+
+        var resolvedName = phoneNumber
         try {
             val uri = Uri.withAppendedPath(
                 ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
@@ -22,7 +28,7 @@ object ContactUtils {
                     if (nameIndex != -1) {
                         val name = cursor.getString(nameIndex)
                         if (!name.isNullOrBlank()) {
-                            return "$name ($phoneNumber)"
+                            resolvedName = "$name ($phoneNumber)"
                         }
                     }
                 }
@@ -30,6 +36,12 @@ object ContactUtils {
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        return phoneNumber
+
+        contactNameCache[phoneNumber] = resolvedName
+        return resolvedName
+    }
+
+    fun clearCache() {
+        contactNameCache.clear()
     }
 }

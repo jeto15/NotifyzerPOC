@@ -119,9 +119,6 @@ class SmsRepository(private val context: Context) {
 
                 if (matched.isNotEmpty()) {
                     smsList.addAll(matched)
-                } else {
-                    // Tier 3: If no address match (e.g. sender was a title string), return all SMS from device
-                    smsList.addAll(allMessages)
                 }
             }
         }
