@@ -30,6 +30,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.Assessment
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Code
@@ -90,6 +91,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     viewModel: MainViewModel,
@@ -104,6 +106,8 @@ fun MainScreen(
 
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var showJsonImportDialog by remember { mutableStateOf(false) }
+    var hardLoadingContact by remember { mutableStateOf<String?>(null) }
+    var bottomSheetContact by remember { mutableStateOf<String?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -145,6 +149,7 @@ fun MainScreen(
         onClearLogs = { viewModel.clearLogs() },
         onLoadMockData = { viewModel.loadMockData(context) },
         onOpenJsonImportDialog = { showJsonImportDialog = true },
+        onTriggerHardDossierLoading = { contactName -> hardLoadingContact = contactName },
         onGrantPermissions = {
             permissionLauncher.launch(
                 arrayOf(
@@ -163,6 +168,24 @@ fun MainScreen(
         },
         modifier = modifier.fillMaxSize()
     )
+
+    // Hard Loading Overlay & Bottom Sheet Animations
+    if (hardLoadingContact != null) {
+        HardDossierLoadingOverlay(
+            contactName = hardLoadingContact!!,
+            onLoadingComplete = {
+                bottomSheetContact = hardLoadingContact
+                hardLoadingContact = null
+            }
+        )
+    }
+
+    if (bottomSheetContact != null) {
+        DossierModalBottomSheet(
+            contactName = bottomSheetContact!!,
+            onDismiss = { bottomSheetContact = null }
+        )
+    }
 
     if (showApiKeyDialog) {
         ApiKeyDialog(
@@ -199,6 +222,7 @@ fun MainScreenContent(
     onClearLogs: () -> Unit,
     onLoadMockData: () -> Unit = {},
     onOpenJsonImportDialog: () -> Unit = {},
+    onTriggerHardDossierLoading: (String) -> Unit = {},
     onGrantPermissions: () -> Unit = {},
     onOpenApiKeyDialog: () -> Unit = {},
     onGenerateDossier: (String, List<CapturedNotification>) -> Unit = { _, _ -> },
@@ -415,6 +439,7 @@ fun MainScreenContent(
                     isLoadingDossier = isLoadingDossier,
                     dossierError = dossierError,
                     onGenerateDossier = onGenerateDossier,
+                    onTriggerHardDossierLoading = onTriggerHardDossierLoading,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
@@ -454,6 +479,7 @@ fun GroupedNotificationSection(
     isLoadingDossier: Map<String, Boolean> = emptyMap(),
     dossierError: Map<String, String> = emptyMap(),
     onGenerateDossier: (String, List<CapturedNotification>) -> Unit = { _, _ -> },
+    onTriggerHardDossierLoading: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -509,6 +535,18 @@ fun GroupedNotificationSection(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            IconButton(
+                                onClick = { onTriggerHardDossierLoading(displayName) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Assessment,
+                                    contentDescription = "Simulate Hard Dossier Flow",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(8.dp))
