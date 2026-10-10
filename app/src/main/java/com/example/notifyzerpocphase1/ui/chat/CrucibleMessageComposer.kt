@@ -72,6 +72,8 @@ fun CrucibleMessageComposer(
         modifier = modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
+            .navigationBarsPadding()
+            .imePadding()
             .padding(8.dp)
     ) {
         // --- Attachment Staging Carousel ---
