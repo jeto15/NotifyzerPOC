@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.telephony.SmsManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.notifyzerpocphase1.data.AppDatabase
@@ -79,9 +81,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             if (attachmentRecords.isNotEmpty()) {
-                // We will need to add an insert method to notificationDao or a dedicated attachmentDao
-                // For now, let's assume we add an insertAttachment method to notificationDao
                 notificationDao.insertAttachments(attachmentRecords)
+            }
+
+            // 4. Send actual SMS via SmsManager if text is present
+            if (currentText.isNotBlank()) {
+                try {
+                    val context = getApplication<Application>()
+                    val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        context.getSystemService(SmsManager::class.java)
+                    } else {
+                        SmsManager.getDefault()
+                    }
+                    smsManager.sendTextMessage(targetContactNumber, null, currentText, null, null)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
 
             // Clear UI State
