@@ -20,6 +20,12 @@ interface NotificationDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insertNotification(notification: NotificationEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertNotificationAndGetId(notification: NotificationEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertAttachments(attachments: List<AttachmentRecord>)
+
     @Query("DELETE FROM notifications")
     fun clearNotifications()
 }
