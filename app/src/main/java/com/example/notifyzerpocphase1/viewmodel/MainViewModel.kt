@@ -122,28 +122,39 @@ class MainViewModel : ViewModel() {
 
     fun checkPermission(context: Context) {
         _isPermissionGranted.value = PermissionUtils.isNotificationListenerGranted(context)
-        autoSyncTargetNumber(context)
+        // Phase 2: Removed auto-sync on install. History is now fetched lazily via Smart Triggers.
     }
 
-    fun autoSyncTargetNumber(context: Context) {
+    /**
+     * Trigger A (Manual) / Trigger B (Incoming) / Trigger C (Outgoing)
+     * Fetches historical SMS only when explicitly triggered for a specific contact.
+     */
+    fun syncContactHistoryIfNeeded(context: Context, contactNumber: String, isBackground: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
-            val smsRepository = SmsRepository(context)
+            val db = AppDatabase.getDatabase(context)
+            // Check if we've already synced this contact
+            val existingCount = db.notificationDao().countMessagesForContact(contactNumber)
+            if (existingCount > 0) return@launch // Already analyzed/synced
 
-            TARGET_POC_NUMBERS.filter { it != MockDataImporter.MOCK_PHONE_NUMBER }.forEach { targetNumber ->
-                val conversation = smsRepository.getConversation(targetNumber)
-                
-                conversation.forEach { sms ->
-                    val isSent = sms.type == Telephony.Sms.MESSAGE_TYPE_SENT
-                    
-                    val notification = CapturedNotification(
-                        packageName = if (isSent) "historical.sms.sync.sent" else "historical.sms.sync",
-                        title = targetNumber,
-                        text = sms.body,
-                        timestamp = sms.date
-                    )
-                    
-                    NotificationRepository.addNotification(notification)
-                }
+            val smsRepository = SmsRepository(context)
+            val conversation = smsRepository.getConversation(contactNumber)
+            
+            conversation.forEach { sms ->
+                val isSent = sms.type == Telephony.Sms.MESSAGE_TYPE_SENT
+                val notification = CapturedNotification(
+                    packageName = if (isSent) "historical.sms.sync.sent" else "historical.sms.sync",
+                    title = contactNumber,
+                    text = sms.body,
+                    timestamp = sms.date
+                )
+                NotificationRepository.addNotification(notification)
+            }
+            
+            // If background trigger (B or C), we can also fire off the AI dossier generation silently here
+            if (isBackground && conversation.isNotEmpty()) {
+                generateDossierForContact(context, contactNumber, conversation.map { 
+                    CapturedNotification(0, if (it.type == Telephony.Sms.MESSAGE_TYPE_SENT) "historical.sms.sync.sent" else "historical.sms.sync", contactNumber, it.body, it.date) 
+                })
             }
         }
     }

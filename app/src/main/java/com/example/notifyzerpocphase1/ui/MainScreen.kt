@@ -31,7 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Assessment
-import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Delete
@@ -114,7 +114,7 @@ fun MainScreen(
     ) { permissions ->
         val smsGranted = permissions[Manifest.permission.READ_SMS] ?: false
         if (smsGranted) {
-            viewModel.autoSyncTargetNumber(context)
+            // Replaced auto-sync. Let smart triggers handle it.
         }
     }
 
@@ -125,7 +125,7 @@ fun MainScreen(
         ) == PackageManager.PERMISSION_GRANTED
 
         if (smsGranted) {
-            viewModel.autoSyncTargetNumber(context)
+            // Replaced auto-sync. Let smart triggers handle it.
         } else {
             permissionLauncher.launch(
                 arrayOf(
@@ -575,6 +575,33 @@ fun GroupedNotificationSection(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // NEW: Open Chat Screen Button
+                        Button(
+                            onClick = { /* TODO: Navigate to ChatScreen */ },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondary,
+                                contentColor = MaterialTheme.colorScheme.onSecondary
+                            ),
+                            contentPadding = PaddingValues(
+                                horizontal = 12.dp,
+                                vertical = 6.dp
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.ChatBubble,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Open Chat",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
                         // 1. Dossier Flow Button (Simulated Hard Loading & Bottom Sheet)
                         Button(
                             onClick = { onTriggerHardDossierLoading(displayName) },

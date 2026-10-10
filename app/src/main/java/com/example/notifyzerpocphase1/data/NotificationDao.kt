@@ -17,6 +17,9 @@ interface NotificationDao {
     @Query("SELECT COUNT(*) FROM notifications WHERE packageName = :packageName AND (text = :text OR (text IS NULL AND :text IS NULL)) AND timestamp = :timestamp")
     fun countDuplicate(packageName: String, text: String?, timestamp: Long): Int
 
+    @Query("SELECT COUNT(*) FROM notifications WHERE title = :contactNumber")
+    fun countMessagesForContact(contactNumber: String): Int
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insertNotification(notification: NotificationEntity)
 
