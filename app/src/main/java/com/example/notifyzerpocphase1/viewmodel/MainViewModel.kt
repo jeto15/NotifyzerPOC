@@ -124,10 +124,12 @@ class MainViewModel : ViewModel() {
     val isPermissionGranted: StateFlow<Boolean> = _isPermissionGranted.asStateFlow()
 
     fun checkPermission(context: Context) {
-        val granted = PermissionUtils.isNotificationListenerGranted(context) &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
-        _isPermissionGranted.value = granted
-        if (granted) {
+        val hasSmsPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+        val hasNotificationPermission = PermissionUtils.isNotificationListenerGranted(context)
+        
+        _isPermissionGranted.value = hasSmsPermission && hasNotificationPermission
+        
+        if (hasSmsPermission) {
             fetchInboxThreads(context)
         }
     }
