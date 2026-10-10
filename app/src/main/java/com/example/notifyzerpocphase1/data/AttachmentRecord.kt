@@ -9,7 +9,7 @@ import androidx.room.PrimaryKey
     tableName = "attachments",
     foreignKeys = [
         ForeignKey(
-            entity = NotificationEntity::class,
+            entity = MessageRecord::class,
             parentColumns = ["id"],
             childColumns = ["messageId"],
             onDelete = ForeignKey.CASCADE
@@ -18,10 +18,11 @@ import androidx.room.PrimaryKey
     indices = [Index("messageId")]
 )
 data class AttachmentRecord(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
     val messageId: Long,
     val uri: String,
     val mimeType: String,
     val fileName: String,
-    val fileSize: Long
+    val fileSizeBytes: Long
 )

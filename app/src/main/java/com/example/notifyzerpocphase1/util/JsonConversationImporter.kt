@@ -23,6 +23,7 @@ object JsonConversationImporter {
             }
 
             // 1. Parse & Insert EntityProfile
+            val displayName = root.optString("displayName", phoneNumber)
             val identityRole = root.optString("identityRole", "Unknown Role")
             val history = root.optString("history", "No historical context provided.")
             val currentDynamic = root.optString("currentDynamic", "Active communication thread.")
@@ -30,6 +31,7 @@ object JsonConversationImporter {
 
             val profile = EntityProfile(
                 phoneNumber = phoneNumber,
+                displayName = displayName,
                 identityRole = identityRole,
                 history = history,
                 currentDynamic = currentDynamic,

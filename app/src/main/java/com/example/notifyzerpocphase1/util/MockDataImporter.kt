@@ -20,6 +20,7 @@ object MockDataImporter {
         // 1. Define the Mock Profile
         val mockProfile = EntityProfile(
             phoneNumber = MOCK_PHONE_NUMBER,
+            displayName = "Jenny Pig",
             identityRole = "Co-founder / Business Partner",
             history = "Known for 3 years, built a startup together. History of missed deadlines.",
             currentDynamic = "Tense but professional. Relying on them for Q3 deliverables.",

@@ -6,13 +6,19 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [NotificationEntity::class, EntityProfile::class, AttachmentRecord::class],
-    version = 4,
+    entities = [
+        NotificationEntity::class,
+        EntityProfile::class,
+        AttachmentRecord::class,
+        MessageRecord::class
+    ],
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun notificationDao(): NotificationDao
     abstract fun entityProfileDao(): EntityProfileDao
+    abstract fun messageDao(): MessageDao
 
     companion object {
         @Volatile

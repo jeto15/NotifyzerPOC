@@ -75,7 +75,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     uri = it.uri.toString(),
                     mimeType = it.mimeType,
                     fileName = it.name,
-                    fileSize = it.size
+                    fileSizeBytes = it.size
                 )
             }
             if (attachmentRecords.isNotEmpty()) {
