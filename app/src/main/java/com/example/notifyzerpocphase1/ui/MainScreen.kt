@@ -103,16 +103,10 @@ fun MainScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val notifications by mainViewModel.notifications.collectAsState()
     val isPermissionGranted by mainViewModel.isPermissionGranted.collectAsState()
-    val dossierState by mainViewModel.dossierState.collectAsState()
-    val isLoadingDossier by mainViewModel.isLoadingDossier.collectAsState()
-    val dossierError by mainViewModel.dossierError.collectAsState()
 
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var showJsonImportDialog by remember { mutableStateOf(false) }
-    var hardLoadingContact by remember { mutableStateOf<String?>(null) }
-    var bottomSheetContact by remember { mutableStateOf<String?>(null) }
     var activeChatContact by remember { mutableStateOf<String?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -142,10 +136,6 @@ fun MainScreen(
         }
     }
 
-    val filteredNotifications = remember(notifications) {
-        mainViewModel.getFilteredNotifications(context, notifications)
-    }
-
     if (activeChatContact != null) {
         ChatScreen(
             viewModel = chatViewModel,
@@ -153,55 +143,14 @@ fun MainScreen(
             onBack = { activeChatContact = null }
         )
     } else {
-        MainScreenContent(
-            notifications = filteredNotifications,
-            isPermissionGranted = isPermissionGranted,
-            dossierState = dossierState,
-            isLoadingDossier = isLoadingDossier,
-            dossierError = dossierError,
-            onClearLogs = { mainViewModel.clearLogs() },
-            onLoadMockData = { mainViewModel.loadMockData(context) },
-            onOpenJsonImportDialog = { showJsonImportDialog = true },
-            onTriggerHardDossierLoading = { contactName -> hardLoadingContact = contactName },
-            onOpenChat = { contactName -> activeChatContact = contactName },
-            onGrantPermissions = {
-                permissionLauncher.launch(
-                    arrayOf(
-                        Manifest.permission.READ_SMS,
-                        Manifest.permission.READ_CONTACTS
-                    )
-                )
-            },
-            onOpenApiKeyDialog = { showApiKeyDialog = true },
-            onGenerateDossier = { senderKey, groupLogs ->
-                if (!ApiKeyManager.hasApiKey(context)) {
-                    showApiKeyDialog = true
-                } else {
-                    mainViewModel.generateDossierForContact(context, senderKey, groupLogs)
-                }
-            },
+        InboxScreen(
+            viewModel = mainViewModel,
+            onThreadClick = { contactName -> activeChatContact = contactName },
             modifier = modifier.fillMaxSize()
         )
     }
 
-    // Hard Loading Overlay & Bottom Sheet Animations
-    if (hardLoadingContact != null) {
-        HardDossierLoadingOverlay(
-            contactName = hardLoadingContact!!,
-            onLoadingComplete = {
-                bottomSheetContact = hardLoadingContact
-                hardLoadingContact = null
-            }
-        )
-    }
-
-    if (bottomSheetContact != null) {
-        DossierModalBottomSheet(
-            contactName = bottomSheetContact!!,
-            onDismiss = { bottomSheetContact = null }
-        )
-    }
-
+    // Optional dialogs that we can retain overlaying Inbox:
     if (showApiKeyDialog) {
         ApiKeyDialog(
             onDismiss = { showApiKeyDialog = false },

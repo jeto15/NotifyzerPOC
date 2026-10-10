@@ -1,8 +1,10 @@
 package com.example.notifyzerpocphase1.repository
 
 import android.content.Context
+import android.net.Uri
 import android.provider.Telephony
 import com.example.notifyzerpocphase1.model.HistoricalSms
+import com.example.notifyzerpocphase1.model.InboxThread
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -124,5 +126,64 @@ class SmsRepository(private val context: Context) {
         }
 
         return@withContext smsList
+    }
+
+    suspend fun getInboxThreads(): List<InboxThread> = withContext(Dispatchers.IO) {
+        val threads = mutableListOf<InboxThread>()
+        val uri = Telephony.Threads.CONTENT_URI
+        val projection = arrayOf(
+            Telephony.Threads._ID,
+            Telephony.Threads.RECIPIENT_IDS,
+            Telephony.Threads.SNIPPET,
+            Telephony.Threads.DATE,
+            Telephony.Threads.READ
+        )
+
+        try {
+            context.contentResolver.query(uri, projection, null, null, Telephony.Threads.DATE + " DESC")?.use { cursor ->
+                val snippetIndex = cursor.getColumnIndexOrThrow(Telephony.Threads.SNIPPET)
+                val dateIndex = cursor.getColumnIndexOrThrow(Telephony.Threads.DATE)
+                val recipientIdsIndex = cursor.getColumnIndexOrThrow(Telephony.Threads.RECIPIENT_IDS)
+                val readIndex = cursor.getColumnIndexOrThrow(Telephony.Threads.READ)
+
+                while (cursor.moveToNext()) {
+                    val snippet = cursor.getString(snippetIndex) ?: ""
+                    val date = cursor.getLong(dateIndex)
+                    val read = cursor.getInt(readIndex)
+                    val recipientIdsStr = cursor.getString(recipientIdsIndex) ?: ""
+
+                    // Resolve the first recipient ID to a phone number
+                    val address = getAddressFromRecipientId(recipientIdsStr.split(" ").firstOrNull() ?: "")
+                    if (address.isNotBlank()) {
+                        threads.add(
+                            InboxThread(
+                                address = address,
+                                snippet = snippet,
+                                timestamp = date,
+                                unreadCount = if (read == 0) 1 else 0
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext threads
+    }
+
+    private fun getAddressFromRecipientId(recipientId: String): String {
+        if (recipientId.isBlank()) return ""
+        val uri = Uri.parse("content://mms-sms/canonical-address/$recipientId")
+        try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    return cursor.getString(0) ?: ""
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return ""
     }
 }

@@ -1,11 +1,15 @@
 package com.example.notifyzerpocphase1.viewmodel
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.provider.Telephony
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.notifyzerpocphase1.data.AppDatabase
 import com.example.notifyzerpocphase1.model.CapturedNotification
+import com.example.notifyzerpocphase1.model.InboxThread
 import com.example.notifyzerpocphase1.repository.NotificationRepository
 import com.example.notifyzerpocphase1.repository.SmsRepository
 import com.example.notifyzerpocphase1.util.PermissionUtils
@@ -35,13 +39,12 @@ class MainViewModel : ViewModel() {
 
     private val geminiRepository = GeminiRepository()
 
-    private val _notifications = NotificationRepository.notifications
-    val notifications: StateFlow<List<CapturedNotification>> = _notifications
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
+    private val _inboxThreads = MutableStateFlow<List<InboxThread>>(emptyList())
+    val inboxThreads: StateFlow<List<InboxThread>> = _inboxThreads.asStateFlow()
+
+    init {
+        // We will fetch the inbox threads when we have permission
+    }
 
     private val _dossierState = MutableStateFlow<Map<String, String>>(emptyMap())
     val dossierState: StateFlow<Map<String, String>> = _dossierState.asStateFlow()
@@ -121,8 +124,19 @@ class MainViewModel : ViewModel() {
     val isPermissionGranted: StateFlow<Boolean> = _isPermissionGranted.asStateFlow()
 
     fun checkPermission(context: Context) {
-        _isPermissionGranted.value = PermissionUtils.isNotificationListenerGranted(context)
-        // Phase 2: Removed auto-sync on install. History is now fetched lazily via Smart Triggers.
+        val granted = PermissionUtils.isNotificationListenerGranted(context) &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+        _isPermissionGranted.value = granted
+        if (granted) {
+            fetchInboxThreads(context)
+        }
+    }
+
+    fun fetchInboxThreads(context: Context) {
+        viewModelScope.launch {
+            val smsRepository = SmsRepository(context)
+            _inboxThreads.value = smsRepository.getInboxThreads()
+        }
     }
 
     /**
