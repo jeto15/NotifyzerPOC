@@ -83,9 +83,11 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.notifyzerpocphase1.model.CapturedNotification
 import com.example.notifyzerpocphase1.ui.theme.CrucibleIntelligenceTheme
+import com.example.notifyzerpocphase1.ui.chat.ChatScreen
 import com.example.notifyzerpocphase1.util.ApiKeyManager
 import com.example.notifyzerpocphase1.util.ContactUtils
 import com.example.notifyzerpocphase1.util.PermissionUtils
+import com.example.notifyzerpocphase1.viewmodel.ChatViewModel
 import com.example.notifyzerpocphase1.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -94,20 +96,22 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
-    viewModel: MainViewModel,
+    mainViewModel: MainViewModel,
+    chatViewModel: ChatViewModel,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val notifications by viewModel.notifications.collectAsState()
-    val isPermissionGranted by viewModel.isPermissionGranted.collectAsState()
-    val dossierState by viewModel.dossierState.collectAsState()
-    val isLoadingDossier by viewModel.isLoadingDossier.collectAsState()
-    val dossierError by viewModel.dossierError.collectAsState()
+    val notifications by mainViewModel.notifications.collectAsState()
+    val isPermissionGranted by mainViewModel.isPermissionGranted.collectAsState()
+    val dossierState by mainViewModel.dossierState.collectAsState()
+    val isLoadingDossier by mainViewModel.isLoadingDossier.collectAsState()
+    val dossierError by mainViewModel.dossierError.collectAsState()
 
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var showJsonImportDialog by remember { mutableStateOf(false) }
     var hardLoadingContact by remember { mutableStateOf<String?>(null) }
     var bottomSheetContact by remember { mutableStateOf<String?>(null) }
+    var activeChatContact by remember { mutableStateOf<String?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -137,37 +141,46 @@ fun MainScreen(
     }
 
     val filteredNotifications = remember(notifications) {
-        viewModel.getFilteredNotifications(context, notifications)
+        mainViewModel.getFilteredNotifications(context, notifications)
     }
 
-    MainScreenContent(
-        notifications = filteredNotifications,
-        isPermissionGranted = isPermissionGranted,
-        dossierState = dossierState,
-        isLoadingDossier = isLoadingDossier,
-        dossierError = dossierError,
-        onClearLogs = { viewModel.clearLogs() },
-        onLoadMockData = { viewModel.loadMockData(context) },
-        onOpenJsonImportDialog = { showJsonImportDialog = true },
-        onTriggerHardDossierLoading = { contactName -> hardLoadingContact = contactName },
-        onGrantPermissions = {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.READ_SMS,
-                    Manifest.permission.READ_CONTACTS
+    if (activeChatContact != null) {
+        ChatScreen(
+            viewModel = chatViewModel,
+            targetContactNumber = activeChatContact!!,
+            onBack = { activeChatContact = null }
+        )
+    } else {
+        MainScreenContent(
+            notifications = filteredNotifications,
+            isPermissionGranted = isPermissionGranted,
+            dossierState = dossierState,
+            isLoadingDossier = isLoadingDossier,
+            dossierError = dossierError,
+            onClearLogs = { mainViewModel.clearLogs() },
+            onLoadMockData = { mainViewModel.loadMockData(context) },
+            onOpenJsonImportDialog = { showJsonImportDialog = true },
+            onTriggerHardDossierLoading = { contactName -> hardLoadingContact = contactName },
+            onOpenChat = { contactName -> activeChatContact = contactName },
+            onGrantPermissions = {
+                permissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.READ_SMS,
+                        Manifest.permission.READ_CONTACTS
+                    )
                 )
-            )
-        },
-        onOpenApiKeyDialog = { showApiKeyDialog = true },
-        onGenerateDossier = { senderKey, groupLogs ->
-            if (!ApiKeyManager.hasApiKey(context)) {
-                showApiKeyDialog = true
-            } else {
-                viewModel.generateDossierForContact(context, senderKey, groupLogs)
-            }
-        },
-        modifier = modifier.fillMaxSize()
-    )
+            },
+            onOpenApiKeyDialog = { showApiKeyDialog = true },
+            onGenerateDossier = { senderKey, groupLogs ->
+                if (!ApiKeyManager.hasApiKey(context)) {
+                    showApiKeyDialog = true
+                } else {
+                    mainViewModel.generateDossierForContact(context, senderKey, groupLogs)
+                }
+            },
+            modifier = modifier.fillMaxSize()
+        )
+    }
 
     // Hard Loading Overlay & Bottom Sheet Animations
     if (hardLoadingContact != null) {
@@ -201,7 +214,7 @@ fun MainScreen(
         ImportJsonDialog(
             onDismiss = { showJsonImportDialog = false },
             onImportJson = { jsonString ->
-                viewModel.importJsonConversation(context, jsonString) { result ->
+                mainViewModel.importJsonConversation(context, jsonString) { result ->
                     val message = result.getOrElse { it.localizedMessage ?: "Failed to import JSON" }
                     Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                 }
@@ -223,6 +236,7 @@ fun MainScreenContent(
     onLoadMockData: () -> Unit = {},
     onOpenJsonImportDialog: () -> Unit = {},
     onTriggerHardDossierLoading: (String) -> Unit = {},
+    onOpenChat: (String) -> Unit = {},
     onGrantPermissions: () -> Unit = {},
     onOpenApiKeyDialog: () -> Unit = {},
     onGenerateDossier: (String, List<CapturedNotification>) -> Unit = { _, _ -> },
@@ -456,6 +470,7 @@ fun MainScreenContent(
                     dossierError = dossierError,
                     onGenerateDossier = onGenerateDossier,
                     onTriggerHardDossierLoading = onTriggerHardDossierLoading,
+                    onOpenChat = onOpenChat,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
@@ -496,6 +511,7 @@ fun GroupedNotificationSection(
     dossierError: Map<String, String> = emptyMap(),
     onGenerateDossier: (String, List<CapturedNotification>) -> Unit = { _, _ -> },
     onTriggerHardDossierLoading: (String) -> Unit = {},
+    onOpenChat: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -577,7 +593,7 @@ fun GroupedNotificationSection(
                     ) {
                         // NEW: Open Chat Screen Button
                         Button(
-                            onClick = { /* TODO: Navigate to ChatScreen */ },
+                            onClick = { onOpenChat(senderKey) },
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.secondary,

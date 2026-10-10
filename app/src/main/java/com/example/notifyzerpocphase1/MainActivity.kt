@@ -8,11 +8,13 @@ import androidx.activity.viewModels
 import com.example.notifyzerpocphase1.repository.NotificationRepository
 import com.example.notifyzerpocphase1.ui.MainScreen
 import com.example.notifyzerpocphase1.ui.theme.CrucibleIntelligenceTheme
+import com.example.notifyzerpocphase1.viewmodel.ChatViewModel
 import com.example.notifyzerpocphase1.viewmodel.MainViewModel
 
 class MainActivity : ComponentActivity() {
 
-    private val viewModel: MainViewModel by viewModels()
+    private val mainViewModel: MainViewModel by viewModels()
+    private val chatViewModel: ChatViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -20,13 +22,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             CrucibleIntelligenceTheme {
-                MainScreen(viewModel = viewModel)
+                MainScreen(mainViewModel = mainViewModel, chatViewModel = chatViewModel)
             }
         }
     }
 
     override fun onResume() {
         super.onResume()
-        viewModel.checkPermission(this)
+        mainViewModel.checkPermission(this)
     }
 }
