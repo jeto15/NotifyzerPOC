@@ -3,6 +3,7 @@ package com.example.notifyzerpocphase1.repository
 import android.content.Context
 import android.net.Uri
 import android.provider.Telephony
+import android.util.Log
 import com.example.notifyzerpocphase1.model.HistoricalSms
 import com.example.notifyzerpocphase1.model.InboxThread
 import kotlinx.coroutines.Dispatchers
@@ -130,35 +131,41 @@ class SmsRepository(private val context: Context) {
 
     suspend fun getInboxThreads(): List<InboxThread> = withContext(Dispatchers.IO) {
         val threads = mutableListOf<InboxThread>()
-        
-        // Use a simpler query that works reliably across API levels for SMS conversations
-        val uri = Uri.parse("content://sms/conversations")
+        val uri = Telephony.Sms.CONTENT_URI
         val projection = arrayOf(
-            "thread_id",
-            "msg_count",
-            "snippet"
+            Telephony.Sms.THREAD_ID,
+            Telephony.Sms.ADDRESS,
+            Telephony.Sms.BODY,
+            Telephony.Sms.DATE
         )
 
         try {
-            context.contentResolver.query(uri, projection, null, null, "date DESC")?.use { cursor ->
-                val threadIdIndex = cursor.getColumnIndex("thread_id")
-                val snippetIndex = cursor.getColumnIndex("snippet")
+            // Fetch all SMS, sorted by date. We will manually group them by thread_id to ensure we get the latest snippet.
+            context.contentResolver.query(uri, projection, null, null, Telephony.Sms.DATE + " DESC")?.use { cursor ->
+                val threadIdIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
+                val addressIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+                val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
+                val dateIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
+
+                val processedThreads = mutableSetOf<Long>()
 
                 while (cursor.moveToNext()) {
-                    if (threadIdIndex != -1 && snippetIndex != -1) {
-                        val threadId = cursor.getLong(threadIdIndex)
-                        val snippet = cursor.getString(snippetIndex) ?: ""
+                    val threadId = cursor.getLong(threadIdIndex)
+                    
+                    // Since it's ordered by DATE DESC, the first time we see a thread_id, it is the most recent message.
+                    if (!processedThreads.contains(threadId)) {
+                        processedThreads.add(threadId)
                         
-                        // We must fetch the actual address using the thread_id
-                        val address = getAddressFromThreadId(threadId)
-                        val timestamp = getTimestampFromThreadId(threadId)
-                        
+                        val address = cursor.getString(addressIndex) ?: ""
+                        val snippet = cursor.getString(bodyIndex) ?: ""
+                        val date = cursor.getLong(dateIndex)
+
                         if (address.isNotBlank()) {
                             threads.add(
                                 InboxThread(
                                     address = address,
                                     snippet = snippet,
-                                    timestamp = timestamp,
+                                    timestamp = date,
                                     unreadCount = 0
                                 )
                             )
@@ -167,57 +174,9 @@ class SmsRepository(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("SmsRepository", "Failed to fetch inbox threads", e)
         }
-        
-        return@withContext threads.sortedByDescending { it.timestamp }
+        return@withContext threads
     }
 
-    private fun getAddressFromThreadId(threadId: Long): String {
-        val uri = Telephony.Sms.CONTENT_URI
-        val projection = arrayOf(Telephony.Sms.ADDRESS)
-        try {
-            context.contentResolver.query(
-                uri, 
-                projection, 
-                "${Telephony.Sms.THREAD_ID} = ?", 
-                arrayOf(threadId.toString()), 
-                "${Telephony.Sms.DATE} DESC LIMIT 1"
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val addressIndex = cursor.getColumnIndex(Telephony.Sms.ADDRESS)
-                    if (addressIndex != -1) {
-                        return cursor.getString(addressIndex) ?: ""
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return ""
-    }
-
-    private fun getTimestampFromThreadId(threadId: Long): Long {
-        val uri = Telephony.Sms.CONTENT_URI
-        val projection = arrayOf(Telephony.Sms.DATE)
-        try {
-            context.contentResolver.query(
-                uri, 
-                projection, 
-                "${Telephony.Sms.THREAD_ID} = ?", 
-                arrayOf(threadId.toString()), 
-                "${Telephony.Sms.DATE} DESC LIMIT 1"
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val dateIndex = cursor.getColumnIndex(Telephony.Sms.DATE)
-                    if (dateIndex != -1) {
-                        return cursor.getLong(dateIndex)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return System.currentTimeMillis()
-    }
 }
