@@ -1,6 +1,7 @@
 package com.example.notifyzerpocphase1.viewmodel
 
 import android.app.Application
+import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -8,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Telephony
 import android.telephony.SmsManager
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.notifyzerpocphase1.data.AppDatabase
@@ -108,10 +110,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         SmsManager.getDefault()
                     }
-                    smsManager.sendTextMessage(targetContactNumber, null, currentText, null, null)
+                    
+                    // We must use a PendingIntent for the sent intent to ensure the system actually attempts delivery.
+                    // Without it, some devices/carriers silently fail the send request.
+                    val sentIntent = PendingIntent.getBroadcast(
+                        context, 0, Intent("SMS_SENT"),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                    )
+                    
+                    smsManager.sendTextMessage(targetContactNumber, null, currentText, sentIntent, null)
 
                     // Because we are the Default SMS app, we MUST write the outgoing message to the native Telephony provider
-                    // otherwise it won't show up in the history correctly.
                     val values = ContentValues().apply {
                         put(Telephony.Sms.ADDRESS, targetContactNumber)
                         put(Telephony.Sms.BODY, currentText)
@@ -124,7 +133,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     // Reload conversation after sending
                     loadConversation(context, targetContactNumber)
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Log.e("ChatViewModel", "Failed to send SMS", e)
                 }
             }
 
